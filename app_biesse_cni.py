@@ -15,87 +15,6 @@ DIR_END = 0xB000
 FIRST_DATA_OFFSET = 0xD800
 RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"F:\programas rover n2 actualizados 2018\Nueva carpeta\00036RV1.ima.IMG"]
 
-def generar_codigo_cnc_plano(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
-    """
-    Genera el código CNC plano idéntico a la estructura de bloques nativos 
-    de la Biesse Rover 322 (CNi RT480).
-    """
-    lineas = []
-    lineas.append("%")
-    lineas.append(f"N10 G71 LX={lpx:g} LY={lpy:g} LZ={lpz:g} HC{hc} Z=PRK")
-    lineas.append("N11 LO:")
-    lineas.append("N20 Y=PRK Z=PRK")
-    
-    n_linea = 10
-    
-    # 1. Perforaciones Verticales (Alineadas al formato nativo L=G99 / L=G98 con UF y herramienta)
-    for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
-        x_base = float(r["X"])
-        y_base = float(r["Y"])
-        prof = float(r["Profundidad"]) if pd.notna(r.get("Profundidad")) else 12.0
-        herr = str(r.get("Herramienta", "T26"))
-        ciclo = str(r.get("Ciclo", "G99"))
-        rep = max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
-        off_x = float(r["Off_X"]) if pd.notna(r.get("Off_X")) else 0.0
-        off_y = float(r["Off_Y"]) if pd.notna(r.get("Off_Y")) else 0.0
-        
-        for step in range(rep):
-            cur_x = x_base + step * off_x
-            cur_y = y_base + step * off_y
-            lineas.append(f"N{n_linea} X{cur_x:.2f} Y{cur_y:.2f} PRF={prof:.2f} UF=1.00 L={ciclo} {herr}")
-            n_linea += 10
-
-    # 2. Perforaciones Horizontales
-    for _, r in df_horiz.dropna(subset=["Z", "Profundidad"]).iterrows():
-        c = int(r.get("C", 1))
-        x_val = float(r["X"]) if pd.notna(r.get("X")) and r["X"] != "" else 0.0
-        y_val = float(r["Y"]) if pd.notna(r.get("Y")) and r["Y"] != "" else 0.0
-        z_pos = float(r["Z"]) if pd.notna(r.get("Z")) else 0.0
-        prof = float(r["Profundidad"]) if pd.notna(r.get("Profundidad")) else 10.0
-        herr = str(r.get("Herramienta", "TH8"))
-        rep = max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
-        off_x = float(r["Off_X"]) if pd.notna(r.get("Off_X")) else 0.0
-        off_y = float(r["Off_Y"]) if pd.notna(r.get("Off_Y")) else 0.0
-        off_z = float(r["Off_Z"]) if pd.notna(r.get("Off_Z")) else 0.0
-
-        for step in range(rep):
-            cur_x = x_val + step * off_x
-            cur_y = y_val + step * off_y
-            cur_z = z_pos + step * off_z
-            
-            if c == 1:
-                lineas.append(f"N{n_linea} QX=0.00 QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G1 {herr}")
-            elif c == 3:
-                lineas.append(f"N{n_linea} QX={lpx:.2f} QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G3 {herr}")
-            elif c == 4:
-                lineas.append(f"N{n_linea} QX={cur_x:.2f} QY=0.00 PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G4 {herr}")
-            else:
-                lineas.append(f"N{n_linea} QX={cur_x:.2f} QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G2 {herr}")
-            n_linea += 10
-
-    # 3. Profiling / Fresado (Opcional)
-    puntos_fresado = df_fresado.dropna(subset=["X", "Y"]) if not df_fresado.empty else pd.DataFrame()
-    if not puntos_fresado.empty:
-        primer = puntos_fresado.iloc[0]
-        lineas.append(f"N{n_linea} G0 X={float(primer['X']):.2f} Y={float(primer['Y']):.2f} Z={float(primer['Z']):.2f} {str(primer.get('Spindle', 'TP1'))} L=PON")
-        n_linea += 10
-        for _, row in puntos_fresado.iloc[1:].iterrows():
-            tipo, rx, ry, rz = str(row["Movimiento"]), float(row['X']), float(row['Y']), float(row['Z'])
-            if tipo == "Lineal (G1)":
-                lineas.append(f"N{n_linea} G1 X={rx:.2f} Y={ry:.2f} Z={rz:.2f}")
-            elif tipo == "Arco Horario (G4)":
-                lineas.append(f"N{n_linea} G4 X={rx:.2f} Y={ry:.2f} R={float(row.get('Radio', 10.0)):.2f}")
-            elif tipo == "Arco Antihorario (G5)":
-                lineas.append(f"N{n_linea} G5 X={rx:.2f} Y={ry:.2f} R={float(row.get('Radio', 10.0)):.2f}")
-            n_linea += 10
-        lineas.append(f"N{n_linea} L=POFF")
-        n_linea += 10
-
-    lineas.append(f"N{n_linea} Y=PRK Z=PRK")
-    lineas.append("%")
-    
-    return "\r\n".join(lineas) + "\r\n"
-
 def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
     lineas_tabla = []
     for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
@@ -207,25 +126,20 @@ def generar_disquete_con_molde(bytes_molde, nombre_prog, meta):
     b_prof = sec_pr
     b_pie = b"G98        G99        *:\x1a"
 
-    cab = bytearray(51)
-    cab[0] = 0x00  # Configurado como Programa Principal (Main) para evitar advertencias de edición
-    cab[1:21] = b' ' * 20
-    
+    # CLONACIÓN DE CABECERA NATIVA: Buscamos la cabecera original en la plantilla para heredar sus bytes exactos
+    cab = bytearray(img[FIRST_DATA_OFFSET : FIRST_DATA_OFFSET + 51])
+    if len(cab) < 51:
+        cab = bytearray(51)
+        cab[0] = 0x00
+    else:
+        cab[0] = 0x00  # Forzar bandera de Programa Principal editable
+
     off_tabla = 51
     off_props = off_tabla + len(b_tabla)
     off_opt = off_props + len(b_props)
     off_prof = off_opt + len(b_opt)
     off_pie = off_prof + len(b_prof)
     off_fin = off_pie + len(b_pie)
-
-    cab[25] = 0x31
-    cab[30] = 0x30
-    cab[31] = 0x30  
-    cab[32] = 0x00
-    cab[35] = 0x31
-    cab[40] = 0x31
-    cab[45] = 0x31
-    cab[50] = 0x30
 
     struct.pack_into('<H', cab, 21, off_props)
     struct.pack_into('<H', cab, 23, off_tabla)
