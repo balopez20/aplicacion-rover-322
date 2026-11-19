@@ -15,7 +15,7 @@ DIR_END = 0xB000
 CLUSTER_SIZE = 4096
 FIRST_DATA_CLUSTER = 0x0A
 FIRST_DATA_OFFSET = 0xD800
-RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"F:\programas rover n2 actualizados 2018\Nueva carpeta\00036RV1.ima.IMG"]
+RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"d:\programas rover n2 actualizados 2018\Nueva carpeta\00036RV1.ima.IMG"]
 
 def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_fresado):
     lineas_tabla = []
