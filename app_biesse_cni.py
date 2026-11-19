@@ -15,11 +15,89 @@ DIR_END = 0xB000
 FIRST_DATA_OFFSET = 0xD800
 RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"F:\programas rover n2 actualizados 2018\Nueva carpeta\00036RV1.ima.IMG"]
 
-def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
-    """Genera las tablas formateadas exactamente como el CNi RT480 las lee en sus pestañas."""
-    lineas_tabla = []
+def generar_codigo_cnc_plano(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
+    """
+    Genera el código CNC plano idéntico a la estructura de bloques nativos 
+    de la Biesse Rover 322 (CNi RT480).
+    """
+    lineas = []
+    lineas.append("%")
+    lineas.append(f"N10 G71 LX={lpx:g} LY={lpy:g} LZ={lpz:g} HC{hc} Z=PRK")
+    lineas.append("N11 LO:")
+    lineas.append("N20 Y=PRK Z=PRK")
     
-    # 1. Perforaciones Verticales (V)
+    n_linea = 10
+    
+    # 1. Perforaciones Verticales (Alineadas al formato nativo L=G99 / L=G98 con UF y herramienta)
+    for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
+        x_base = float(r["X"])
+        y_base = float(r["Y"])
+        prof = float(r["Profundidad"]) if pd.notna(r.get("Profundidad")) else 12.0
+        herr = str(r.get("Herramienta", "T26"))
+        ciclo = str(r.get("Ciclo", "G99"))
+        rep = max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
+        off_x = float(r["Off_X"]) if pd.notna(r.get("Off_X")) else 0.0
+        off_y = float(r["Off_Y"]) if pd.notna(r.get("Off_Y")) else 0.0
+        
+        for step in range(rep):
+            cur_x = x_base + step * off_x
+            cur_y = y_base + step * off_y
+            lineas.append(f"N{n_linea} X{cur_x:.2f} Y{cur_y:.2f} PRF={prof:.2f} UF=1.00 L={ciclo} {herr}")
+            n_linea += 10
+
+    # 2. Perforaciones Horizontales
+    for _, r in df_horiz.dropna(subset=["Z", "Profundidad"]).iterrows():
+        c = int(r.get("C", 1))
+        x_val = float(r["X"]) if pd.notna(r.get("X")) and r["X"] != "" else 0.0
+        y_val = float(r["Y"]) if pd.notna(r.get("Y")) and r["Y"] != "" else 0.0
+        z_pos = float(r["Z"]) if pd.notna(r.get("Z")) else 0.0
+        prof = float(r["Profundidad"]) if pd.notna(r.get("Profundidad")) else 10.0
+        herr = str(r.get("Herramienta", "TH8"))
+        rep = max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
+        off_x = float(r["Off_X"]) if pd.notna(r.get("Off_X")) else 0.0
+        off_y = float(r["Off_Y"]) if pd.notna(r.get("Off_Y")) else 0.0
+        off_z = float(r["Off_Z"]) if pd.notna(r.get("Off_Z")) else 0.0
+
+        for step in range(rep):
+            cur_x = x_val + step * off_x
+            cur_y = y_val + step * off_y
+            cur_z = z_pos + step * off_z
+            
+            if c == 1:
+                lineas.append(f"N{n_linea} QX=0.00 QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G1 {herr}")
+            elif c == 3:
+                lineas.append(f"N{n_linea} QX={lpx:.2f} QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G3 {herr}")
+            elif c == 4:
+                lineas.append(f"N{n_linea} QX={cur_x:.2f} QY=0.00 PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G4 {herr}")
+            else:
+                lineas.append(f"N{n_linea} QX={cur_x:.2f} QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G2 {herr}")
+            n_linea += 10
+
+    # 3. Profiling / Fresado (Opcional)
+    puntos_fresado = df_fresado.dropna(subset=["X", "Y"]) if not df_fresado.empty else pd.DataFrame()
+    if not puntos_fresado.empty:
+        primer = puntos_fresado.iloc[0]
+        lineas.append(f"N{n_linea} G0 X={float(primer['X']):.2f} Y={float(primer['Y']):.2f} Z={float(primer['Z']):.2f} {str(primer.get('Spindle', 'TP1'))} L=PON")
+        n_linea += 10
+        for _, row in puntos_fresado.iloc[1:].iterrows():
+            tipo, rx, ry, rz = str(row["Movimiento"]), float(row['X']), float(row['Y']), float(row['Z'])
+            if tipo == "Lineal (G1)":
+                lineas.append(f"N{n_linea} G1 X={rx:.2f} Y={ry:.2f} Z={rz:.2f}")
+            elif tipo == "Arco Horario (G4)":
+                lineas.append(f"N{n_linea} G4 X={rx:.2f} Y={ry:.2f} R={float(row.get('Radio', 10.0)):.2f}")
+            elif tipo == "Arco Antihorario (G5)":
+                lineas.append(f"N{n_linea} G5 X={rx:.2f} Y={ry:.2f} R={float(row.get('Radio', 10.0)):.2f}")
+            n_linea += 10
+        lineas.append(f"N{n_linea} L=POFF")
+        n_linea += 10
+
+    lineas.append(f"N{n_linea} Y=PRK Z=PRK")
+    lineas.append("%")
+    
+    return "\r\n".join(lineas) + "\r\n"
+
+def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
+    lineas_tabla = []
     for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
         c = int(r.get("C", 1))
         x = f"{float(r['X']):g}"
@@ -33,13 +111,11 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
         off_y = f"{float(r['Off_Y']):g}" if pd.notna(r.get("Off_Y")) and float(r.get("Off_Y", 0)) != 0 else ""
         lineas_tabla.append(f"V,{c},{x:<8},{y:<9},{dp:<6},{diam:<6},{tipo},{rep:<3},{off_x:<7},{off_y:<7},  ,")
 
-    # 2. Perforaciones Horizontales (O)
     for _, r in df_horiz.dropna(subset=["Z", "Profundidad"]).iterrows():
         c = int(r.get("C", 1))
         s = int(r.get("S", 1))
         x_val = r.get("X")
         y_val = r.get("Y")
-        
         x_str = f"{float(x_val):g}" if pd.notna(x_val) and x_val != "" else ""
         y_str = f"{float(y_val):g}" if pd.notna(y_val) and y_val != "" else ""
         z_str = f"{float(r['Z']):g}" if pd.notna(r.get("Z")) and float(r["Z"]) != 0 else ""
@@ -48,11 +124,9 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
         tipo = int(r.get("Tipo", 2)) if pd.notna(r.get("Tipo")) else 2
         rep_val = int(r.get("Rep", 1)) if pd.notna(r.get("Rep")) else 1
         rep = f"{rep_val}" if rep_val > 1 else ""
-        
         off_x = f"{float(r['Off_X']):g}" if pd.notna(r.get("Off_X")) and float(r.get("Off_X", 0)) != 0 else ""
         off_y = f"{float(r['Off_Y']):g}" if pd.notna(r.get("Off_Y")) and float(r.get("Off_Y", 0)) != 0 else ""
         off_z = f"{float(r['Off_Z']):g}" if pd.notna(r.get("Off_Z")) and float(r.get("Off_Z", 0)) != 0 else ""
-        
         lineas_tabla.append(f"O,{c},{s},{x_str:<8},{y_str:<9},{z_str:<7},{dp:<6},{diam:<6},{tipo},{rep:<3},{off_x:<7},{off_y:<7},{off_z:<7},  ,")
 
     if not lineas_tabla:
@@ -61,7 +135,6 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
     sec_tabla = "\n".join(lineas_tabla) + "\n"
     sec_props = f"LPX={lpx:g}                      \nLPY={lpy:g}                       \nLPZ={lpz:g}                        \n"
     
-    # 3. Optimized drilling
     lineas_opt, n_opt = [], 10
     for _, r in df_horiz.dropna(subset=["Z", "Profundidad"]).iterrows():
         c = int(r.get("C", 1))
@@ -84,18 +157,17 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
     for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
         xv, yv = float(r["X"]), float(r["Y"])
         prof = float(r["Profundidad"]) if pd.notna(r.get("Profundidad")) else 15.0
-        herr, ciclo = str(r.get("Herramienta", "T10")), str(r.get("Ciclo", "G99"))
+        herr, ciclo = str(r.get("Herramienta", "T26")), str(r.get("Ciclo", "G99"))
         rep = max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
         ox = float(r["Off_X"]) if pd.notna(r.get("Off_X")) else 0.0
         oy = float(r["Off_Y"]) if pd.notna(r.get("Off_Y")) else 0.0
         for step in range(rep):
-            lineas_opt.append(f"N{n_opt} X{xv + step * ox:.2f} Y{yv + step * oy:.2f} PRF={prof:.2f} L={ciclo} {herr}")
+            lineas_opt.append(f"N{n_opt} X{xv + step * ox:.2f} Y{yv + step * oy:.2f} PRF={prof:.2f} UF=1.00 L={ciclo} {herr}")
             n_opt += 10
 
     lineas_opt.append("%")
     sec_opt = "\n".join(lineas_opt) + "\n"
 
-    # 4. Profiling
     lineas_prof = [f"N10 G71 LX={lpx:g} LY={lpy:g} LZ={lpz:g} HC{hc} Z=PRK                                    ", "N11 LO:"]
     n_prof, puntos_fresado = 20, df_fresado.dropna(subset=["X", "Y"]) if not df_fresado.empty else pd.DataFrame()
     if not puntos_fresado.empty:
@@ -113,11 +185,9 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
 
     lineas_prof.extend([f"N{n_prof} Y=PRK Z=PRK", "%"])
     sec_prof = "\n".join(lineas_prof) + "\n"
-    
     return sec_tabla, sec_props, sec_opt, sec_prof
 
 def generar_disquete_con_molde(bytes_molde, nombre_prog, meta):
-    """Empaqueta las 4 secciones nativas del CNi para que el software de PC las edite sin error."""
     img = bytearray(bytes_molde)
     if len(img) < FLOPPY_SIZE: 
         img.extend(b'\xE5' * (FLOPPY_SIZE - len(img)))
@@ -138,7 +208,7 @@ def generar_disquete_con_molde(bytes_molde, nombre_prog, meta):
     b_pie = b"G98        G99        *:\x1a"
 
     cab = bytearray(51)
-    cab[0] = 0x01
+    cab[0] = 0x00  # Configurado como Programa Principal (Main) para evitar advertencias de edición
     cab[1:21] = b' ' * 20
     
     off_tabla = 51
@@ -184,7 +254,7 @@ def generar_disquete_con_molde(bytes_molde, nombre_prog, meta):
     entrada[1:12] = nombre_limpio.ljust(11, ' ').encode('ascii')
     registros_128 = (len(bloque_final) + 127) // 128
     entrada[15] = registros_128 & 0xFF
-    entrada[16] = 0x0A  # Cluster inicial
+    entrada[16] = 0x0A
 
     img[DIR_OFFSET:DIR_END] = b'\xE5' * (DIR_END - DIR_OFFSET)
     img[entry_off : entry_off + 32] = entrada
@@ -206,7 +276,7 @@ with tab1:
 
         st.subheader("Drilling tables — Vertical drills")
         df_vert_default = pd.DataFrame([
-            {"C": 1, "X": 8.5, "Y": 32.0, "Profundidad": 22.0, "Diametro": 7.0, "Tipo": 1, "Rep": 2, "Off_X": 0.0, "Off_Y": 416.0, "Herramienta": "T10", "Ciclo": "G99"}
+            {"C": 1, "X": 358.0, "Y": 23.0, "Profundidad": 12.0, "Diametro": 5.0, "Tipo": 2, "Rep": 4, "Off_X": 288.0, "Off_Y": 0.0, "Herramienta": "T26", "Ciclo": "G99"}
         ])
         df_vert = st.data_editor(df_vert_default, num_rows="dynamic", use_container_width=True, column_config={
             "C": st.column_config.NumberColumn("C", min_value=1, max_value=4, step=1),
@@ -219,9 +289,7 @@ with tab1:
         })
 
         st.subheader("Drilling tables — Horizontal drills")
-        df_horiz_default = pd.DataFrame([
-            {"C": 1, "S": 1, "X": 48.0, "Y": None, "Z": 7.5, "Profundidad": 24.0, "Diametro": 8.0, "Tipo": 2, "Rep": 3, "Off_X": 0.0, "Off_Y": 70.0, "Off_Z": 0.0, "Herramienta": "TH8"}
-        ])
+        df_horiz_default = pd.DataFrame(columns=["C", "S", "X", "Y", "Z", "Profundidad", "Diametro", "Tipo", "Rep", "Off_X", "Off_Y", "Off_Z", "Herramienta"])
         df_horiz = st.data_editor(df_horiz_default, num_rows="dynamic", use_container_width=True, column_config={
             "C": st.column_config.NumberColumn("C", min_value=1, max_value=4, step=1),
             "S": st.column_config.NumberColumn("S", min_value=1, max_value=4, step=1),
