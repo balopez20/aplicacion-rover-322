@@ -18,7 +18,6 @@ RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"F:\programas rover n2 actualiza
 def generar_codigo_cnc_plano(lpx, lpy, lpz, hc, df_vert, df_horiz, df_fresado):
     """
     Genera el código CNC plano estándar con G71 al inicio y todas las operaciones secuenciales.
-    Esto evita por completo el error de 'Subprogram editing is not supported' en el CNi Floppy.
     """
     lineas = []
     lineas.append("%")
@@ -98,7 +97,7 @@ def generar_disquete_con_codigo_plano(bytes_molde, nombre_prog, contenido_cnc):
     else: 
         img = img[:FLOPPY_SIZE]
     
-    nombre_limpio = re.sub(r'[^A-Z0-9_-]', '', str(nombre_prog).replace('"', '').replace("'", "").upper())[:11] or "PIEZA01"
+    nombre_limpio = re.sub(r'[^A-Z0-9_-]', '', str(nombre_prog).replace('"', '').replace("'", "").upper())[:11] or "M01039-25"
     datos_bytes = contenido_cnc.encode('ascii', errors='ignore')
 
     # Inyectar directamente el contenido plano en el área de datos del molde
@@ -133,7 +132,7 @@ with tab1:
     with col_izq:
         st.subheader("Properties (Dimensiones del Tablero)")
         c1, c2, c3, c4, c5 = st.columns([1.4, 1, 1, 1, 0.7])
-        nombre_prog = c1.text_input("Name (Máx 11)", value="PIEZA01", max_chars=11).upper()
+        nombre_prog = c1.text_input("Name (Ej: M01039-25)", value="M01039-25", max_chars=11).upper()
         lpx, lpy, lpz, hc = c2.number_input("LPX (mm)", 50.0, 3200.0, 804.0, 1.0), c3.number_input("LPY (mm)", 50.0, 1500.0, 480.0, 1.0), c4.number_input("LPZ (mm)", 3.0, 100.0, 15.0, 1.0), int(c5.number_input("HC", 1, 4, 1, 1))
         comentario = st.text_input("Comment (Opcional)", value="")
 
@@ -237,7 +236,6 @@ with tab3:
     nombre_salida = st.text_input("Nombre del archivo para el emulador USB (Gotek):", value="DSKA0000.IMG")
 
     if bytes_molde is not None and st.session_state.cola_disquete:
-        # Tomamos el primer programa en cola para inyectarlo plano
         nombre_key, codigo_txt = list(st.session_state.cola_disquete.items())[0]
         imagen_final = generar_disquete_con_codigo_plano(bytes_molde, nombre_key, codigo_txt)
         
