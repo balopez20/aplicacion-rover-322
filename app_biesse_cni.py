@@ -6,7 +6,7 @@ import struct
 import re
 import os
 
-st.set_page_config(page_title="Generador CNi RT480 - Biesse Rover 322", page_icon="🪚", layout="wide")
+st.set_page_config(page_title="Biesse Rover 322", page_icon="🪚", layout="wide")
 st.title("🪚 Generador de Disquetes (.IMG) - Biesse CNi RT480")
 
 FLOPPY_SIZE = 1474560
