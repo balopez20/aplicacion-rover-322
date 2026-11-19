@@ -20,34 +20,39 @@ RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"F:\programas rover n2 actualiza
 def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_fresado):
     lineas_tabla = []
     for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
-        c, x, y, dp = int(r.get("C", 1)), f"{r['X']:g}", f"{r['Y']:g}", f"{r['Profundidad']:g}"
-        diam = f"{r['Diametro']:g}" if pd.notna(r.get("Diametro")) else "5"
-        tipo, rep_val = int(r.get("Tipo", 2)), int(r.get("Rep", 1)) if pd.notna(r.get("Rep")) else 1
-        rep = f"{rep_val}" if rep_val > 1 else ""
-        off_x = f"{r['Off_X']:g}" if pd.notna(r.get("Off_X")) and r.get("Off_X", 0) != 0 else ""
-        off_y = f"{r['Off_Y']:g}" if pd.notna(r.get("Off_Y")) and r.get("Off_Y", 0) != 0 else ""
-        lineas_tabla.append(f"V,{c},{x:<8},{y:<9},{dp:<6},{diam:<6},{tipo},{rep:<3},{off_x:<7},{off_y:<7},  ,")
+        c = int(r.get("C", 1))
+        x = f"{r['X']:.2f}".ljust(8)
+        y = f"{r['Y']:.2f}".ljust(9)
+        dp = f"{r['Profundidad']:.2f}".ljust(6)
+        diam = f"{r['Diametro']:.1f}".ljust(6) if pd.notna(r.get("Diametro")) else "5.0   "
+        tipo = int(r.get("Tipo", 2))
+        rep_val = int(r.get("Rep", 1)) if pd.notna(r.get("Rep")) else 1
+        rep = f"{rep_val}".ljust(3) if rep_val > 1 else "   "
+        off_x = f"{r['Off_X']:.2f}".ljust(7) if pd.notna(r.get("Off_X")) else "0.00   "
+        off_y = f"{r['Off_Y']:.2f}".ljust(7) if pd.notna(r.get("Off_Y")) else "0.00   "
+        lineas_tabla.append(f"V,{c},{x},{y},{dp},{diam},{tipo},{rep},{off_x},{off_y},  ,")
 
     for _, r in df_horiz.dropna(subset=["X/Y", "Z"]).iterrows():
         cara_txt = str(r["Cara"])
         cara_num = 1 if "G1" in cara_txt else (3 if "G3" in cara_txt else (4 if "G4" in cara_txt else 2))
         s_num = int(r.get("S", 1)) if pd.notna(r.get("S")) else 1
-        x_str, y_str = ("", f"{r['X/Y']:g}") if cara_num in (1, 3) else (f"{r['X/Y']:g}", "")
-        z_str = f"{r['Z']:g}" if r["Z"] != 0 else ""
-        dp, diam = f"{r['Profundidad']:g}", f"{r['Diametro']:g}" if pd.notna(r.get("Diametro")) else "8"
+        x_str, y_str = ("        ", f"{r['X/Y']:.2f}".ljust(9)) if cara_num in (1, 3) else (f"{r['X/Y']:.2f}".ljust(8), "         ")
+        z_str = f"{r['Z']:.2f}".ljust(7) if r["Z"] != 0 else "0.00   "
+        dp = f"{r['Profundidad']:.2f}".ljust(6)
+        diam = f"{r['Diametro']:.1f}".ljust(6) if pd.notna(r.get("Diametro")) else "8.0   "
         tipo = int(r.get("Tipo", 2)) if pd.notna(r.get("Tipo")) else 2
         rep_val = int(r.get("Rep", 1)) if pd.notna(r.get("Rep")) else 1
-        rep = f"{rep_val}" if rep_val > 1 else ""
-        off_x = f"{r['Off_X']:g}" if pd.notna(r.get("Off_X")) and r.get("Off_X", 0) != 0 else ""
-        off_y = f"{r['Off_Y']:g}" if pd.notna(r.get("Off_Y")) and r.get("Off_Y", 0) != 0 else ""
-        off_z = f"{r['Off_Z']:g}" if pd.notna(r.get("Off_Z")) and r.get("Off_Z", 0) != 0 else ""
-        lineas_tabla.append(f"O,{cara_num},{s_num},{x_str:<8},{y_str:<9},{z_str:<7},{dp:<6},{diam:<6},{tipo},{rep:<3},{off_x:<7},{off_y:<7},{off_z:<7},  ,")
+        rep = f"{rep_val}".ljust(3) if rep_val > 1 else "   "
+        off_x = f"{r['Off_X']:.2f}".ljust(7) if pd.notna(r.get("Off_X")) else "0.00   "
+        off_y = f"{r['Off_Y']:.2f}".ljust(7) if pd.notna(r.get("Off_Y")) else "0.00   "
+        off_z = f"{r['Off_Z']:.2f}".ljust(7) if pd.notna(r.get("Off_Z")) else "0.00   "
+        lineas_tabla.append(f"O,{cara_num},{s_num},{x_str},{y_str},{z_str},{dp},{diam},{tipo},{rep},{off_x},{off_y},{off_z},  ,")
 
     if not lineas_tabla:
-        lineas_tabla.append("V,1,20      ,32       ,10    ,5     ,2,   ,       ,       ,  ,")
+        lineas_tabla.append("V,1,8.5     ,32.0     ,22.0  ,7.0   ,1, 2 ,0.00   ,416.00,  ,")
 
-    sec_tabla = "\n".join(lineas_tabla) + "\n"
-    sec_props = f"LPX={lpx:g}                      \nLPY={lpy:g}                       \nLPZ={lpz:g}                        \n"
+    sec_tabla = "\r\n".join(lineas_tabla) + "\r\n"
+    sec_props = f"LPX={lpx:g}\r\nLPY={lpy:g}\r\nLPZ={lpz:g}\r\n"
     
     lineas_opt, n_opt = [], 10
     for _, r in df_horiz.dropna(subset=["X/Y", "Z"]).iterrows():
@@ -78,9 +83,9 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_f
             n_opt += 10
 
     lineas_opt.append("%")
-    sec_opt = "\n".join(lineas_opt) + "\n"
+    sec_opt = "\r\n".join(lineas_opt) + "\r\n"
 
-    lineas_prof = [f"N10 G71 LX={lpx:g} LY={lpy:g} LZ={lpz:g} HC{hc} Z=PRK                                    ", "N11 LO:"]
+    lineas_prof = [f"N10 G71 LX={lpx:g} LY={lpy:g} LZ={lpz:g} HC{hc} Z=PRK", "N11 LO:"]
     n_prof, puntos_fresado = 20, df_fresado.dropna(subset=["X", "Y"]) if not df_fresado.empty else pd.DataFrame()
     if not puntos_fresado.empty:
         primer = puntos_fresado.iloc[0]
@@ -99,7 +104,7 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_f
         n_prof += 10
 
     lineas_prof.extend([f"N{n_prof} Y=PRK Z=PRK", "%"])
-    sec_prof = "\n".join(lineas_prof) + "\n"
+    sec_prof = "\r\n".join(lineas_prof) + "\r\n"
     return sec_tabla, sec_props, sec_opt, sec_prof
 
 def generar_disquete_con_molde(bytes_molde, lista_programas):
@@ -115,10 +120,10 @@ def generar_disquete_con_molde(bytes_molde, lista_programas):
     nombre_raw, meta = lista_programas[0]
     nombre_limpio = re.sub(r'[^A-Z0-9_-]', '', str(nombre_raw).replace('"', '').replace("'", "").upper())[:11] or "PIEZA01"
 
-    sec_t = meta["sec_tabla"].replace('\n', '\r\n').encode('ascii', errors='ignore')
-    sec_p = meta["sec_props"].replace('\n', '\r\n').encode('ascii', errors='ignore')
-    sec_o = meta["sec_opt"].replace('\n', '\r\n').encode('ascii', errors='ignore')
-    sec_pr = meta["sec_prof"].replace('\n', '\r\n').encode('ascii', errors='ignore')
+    sec_t = meta["sec_tabla"].encode('ascii', errors='ignore')
+    sec_p = meta["sec_props"].encode('ascii', errors='ignore')
+    sec_o = meta["sec_opt"].encode('ascii', errors='ignore')
+    sec_pr = meta["sec_prof"].encode('ascii', errors='ignore')
     
     b_tabla = b"11\r\n" + sec_t
     b_props = sec_p
