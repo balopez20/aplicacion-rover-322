@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,7 +7,7 @@ import re
 import os
 
 st.set_page_config(page_title="Generador CNi RT480 - Biesse Rover 322", page_icon="🪚", layout="wide")
-st.title("🪚 Generador CNi RT480 & Disquetes (.IMG) - Biesse Rover 322")
+st.title("🪚 Generador de Disquetes (.IMG) - Biesse CNi RT480")
 
 FLOPPY_SIZE = 1474560
 DIR_OFFSET = 0x9A00
@@ -16,62 +15,86 @@ DIR_END = 0xB000
 CLUSTER_SIZE = 4096
 FIRST_DATA_CLUSTER = 0x0A
 FIRST_DATA_OFFSET = 0xD800
-RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"d:\programas rover n2 actualizados 2018\Nueva carpeta\00036RV1.ima.IMG"]
+RUTAS_PLANTILLA_DEFAULT = ["00036RV1.ima.IMG", r"F:\programas rover n2 actualizados 2018\Nueva carpeta\00036RV1.ima.IMG"]
 
 def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_fresado):
     lineas_tabla = []
+    
+    # Procesar Perforaciones Verticales (V)
     for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
-        c = int(r.get("C", 1))
-        x = f"{r['X']:.2f}".ljust(8)
-        y = f"{r['Y']:.2f}".ljust(9)
-        dp = f"{r['Profundidad']:.2f}".ljust(6)
-        diam = f"{r['Diametro']:.1f}".ljust(6) if pd.notna(r.get("Diametro")) else "5.0   "
-        tipo = int(r.get("Tipo", 2))
-        rep_val = int(r.get("Rep", 1)) if pd.notna(r.get("Rep")) else 1
-        rep = f"{rep_val}".ljust(3) if rep_val > 1 else "   "
-        off_x = f"{r['Off_X']:.2f}".ljust(7) if pd.notna(r.get("Off_X")) else "0.00   "
-        off_y = f"{r['Off_Y']:.2f}".ljust(7) if pd.notna(r.get("Off_Y")) else "0.00   "
-        lineas_tabla.append(f"V,{c},{x},{y},{dp},{diam},{tipo},{rep},{off_x},{off_y},  ,")
+        c, x, y, dp = int(r.get("C", 1)), f"{r['X']:g}", f"{r['Y']:g}", f"{r['Profundidad']:g}"
+        diam = f"{r['Diametro']:g}" if pd.notna(r.get("Diametro")) else "5"
+        tipo, rep_val = int(r.get("Tipo", 2)), int(r.get("Rep", 1)) if pd.notna(r.get("Rep")) else 1
+        rep = f"{rep_val}" if rep_val > 1 else ""
+        off_x = f"{r['Off_X']:g}" if pd.notna(r.get("Off_X")) and r.get("Off_X", 0) != 0 else ""
+        off_y = f"{r['Off_Y']:g}" if pd.notna(r.get("Off_Y")) and r.get("Off_Y", 0) != 0 else ""
+        lineas_tabla.append(f"V,{c},{x:<8},{y:<9},{dp:<6},{diam:<6},{tipo},{rep:<3},{off_x:<7},{off_y:<7},  ,")
 
-    for _, r in df_horiz.dropna(subset=["X/Y", "Z"]).iterrows():
-        cara_txt = str(r["Cara"])
-        cara_num = 1 if "G1" in cara_txt else (3 if "G3" in cara_txt else (4 if "G4" in cara_txt else 2))
-        s_num = int(r.get("S", 1)) if pd.notna(r.get("S")) else 1
-        x_str, y_str = ("        ", f"{r['X/Y']:.2f}".ljust(9)) if cara_num in (1, 3) else (f"{r['X/Y']:.2f}".ljust(8), "         ")
-        z_str = f"{r['Z']:.2f}".ljust(7) if r["Z"] != 0 else "0.00   "
-        dp = f"{r['Profundidad']:.2f}".ljust(6)
-        diam = f"{r['Diametro']:.1f}".ljust(6) if pd.notna(r.get("Diametro")) else "8.0   "
+    # Procesar Perforaciones Horizontales (O) con formato idéntico a la ventana blanca
+    for _, r in df_horiz.dropna(subset=["Z", "Profundidad"]).iterrows():
+        c = int(r.get("C", 1))
+        s = int(r.get("S", 1))
+        x_val = r.get("X")
+        y_val = r.get("Y")
+        
+        # Si es horizontal, dependiendo de la cara, una coordenada va en blanco o con valor
+        x_str = f"{x_val:g}" if pd.notna(x_val) and x_val != "" else ""
+        y_str = f"{y_val:g}" if pd.notna(y_val) and y_val != "" else ""
+        
+        z_str = f"{r['Z']:g}" if pd.notna(r.get("Z")) and r["Z"] != 0 else ""
+        dp = f"{r['Profundidad']:g}"
+        diam = f"{r['Diametro']:g}" if pd.notna(r.get("Diametro")) else "8"
         tipo = int(r.get("Tipo", 2)) if pd.notna(r.get("Tipo")) else 2
         rep_val = int(r.get("Rep", 1)) if pd.notna(r.get("Rep")) else 1
-        rep = f"{rep_val}".ljust(3) if rep_val > 1 else "   "
-        off_x = f"{r['Off_X']:.2f}".ljust(7) if pd.notna(r.get("Off_X")) else "0.00   "
-        off_y = f"{r['Off_Y']:.2f}".ljust(7) if pd.notna(r.get("Off_Y")) else "0.00   "
-        off_z = f"{r['Off_Z']:.2f}".ljust(7) if pd.notna(r.get("Off_Z")) else "0.00   "
-        lineas_tabla.append(f"O,{cara_num},{s_num},{x_str},{y_str},{z_str},{dp},{diam},{tipo},{rep},{off_x},{off_y},{off_z},  ,")
+        rep = f"{rep_val}" if rep_val > 1 else ""
+        
+        off_x = f"{r['Off_X']:g}" if pd.notna(r.get("Off_X")) and r.get("Off_X", 0) != 0 else ""
+        off_y = f"{r['Off_Y']:g}" if pd.notna(r.get("Off_Y")) and r.get("Off_Y", 0) != 0 else ""
+        off_z = f"{r['Off_Z']:g}" if pd.notna(r.get("Off_Z")) and r.get("Off_Z", 0) != 0 else ""
+        
+        lineas_tabla.append(f"O,{c},{s},{x_str:<8},{y_str:<9},{z_str:<7},{dp:<6},{diam:<6},{tipo},{rep:<3},{off_x:<7},{off_y:<7},{off_z:<7},  ,")
 
     if not lineas_tabla:
-        lineas_tabla.append("V,1,8.5     ,32.0     ,22.0  ,7.0   ,1, 2 ,0.00   ,416.00,  ,")
+        lineas_tabla.append("V,1,20      ,32       ,10    ,5     ,2,   ,       ,       ,  ,")
 
-    sec_tabla = "\r\n".join(lineas_tabla) + "\r\n"
-    sec_props = f"LPX={lpx:g}\r\nLPY={lpy:g}\r\nLPZ={lpz:g}\r\n"
+    sec_tabla = "\n".join(lineas_tabla) + "\n"
+    sec_props = f"LPX={lpx:g}                      \nLPY={lpy:g}                       \nLPZ={lpz:g}                        \n"
     
     lineas_opt, n_opt = [], 10
-    for _, r in df_horiz.dropna(subset=["X/Y", "Z"]).iterrows():
-        cara, coord_pos = str(r["Cara"]), float(r["X/Y"])
+    
+    # Generar bloques optimizados horizontales para la máquina
+    for _, r in df_horiz.dropna(subset=["Z", "Profundidad"]).iterrows():
+        c = int(r.get("C", 1))
+        x_val = float(r["X"]) if pd.notna(r.get("X")) and r["X"] != "" else 0.0
+        y_val = float(r["Y"]) if pd.notna(r.get("Y")) and r["Y"] != "" else 0.0
         z_pos = float(r["Z"]) if pd.notna(r.get("Z")) else 0.0
         prof = float(r["Profundidad"]) if pd.notna(r.get("Profundidad")) else 10.0
-        herr, rep = str(r.get("Herramienta", "TH8")), max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
+        herr = str(r.get("Herramienta", "TH8"))
+        rep = max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
         off_x = float(r["Off_X"]) if pd.notna(r.get("Off_X")) else 0.0
         off_y = float(r["Off_Y"]) if pd.notna(r.get("Off_Y")) else 0.0
+        off_z = float(r["Off_Z"]) if pd.notna(r.get("Off_Z")) else 0.0
+
         for step in range(rep):
-            if "G1" in cara:
-                lineas_opt.append(f"N{n_opt} QX=0.00 QY={coord_pos + step * off_y:.2f} PRF={prof:.2f} QZ={z_pos:.2f} QQN=1 L=G1 {herr}")
-            elif "G3" in cara:
-                lineas_opt.append(f"N{n_opt} QX={lpx:.2f} QY={coord_pos + step * off_y:.2f} PRF={prof:.2f} QZ={z_pos:.2f} QQN=1 L=G3 {herr}")
-            elif "G4" in cara:
-                lineas_opt.append(f"N{n_opt} QX={coord_pos + step * off_x:.2f} QY=0.00 PRF={prof:.2f} QZ={z_pos:.2f} QQN=1 L=G4 {herr}")
+            cur_x = x_val + step * off_x
+            cur_y = y_val + step * off_y
+            cur_z = z_pos + step * off_z
+            
+            # Mapeo de cara C de Biesse
+            if c == 1:
+                # Cara izquierda (G1)
+                lineas_opt.append(f"N{n_opt} QX=0.00 QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G1 {herr}")
+            elif c == 3:
+                # Cara derecha (G3)
+                lineas_opt.append(f"N{n_opt} QX={lpx:.2f} QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G3 {herr}")
+            elif c == 4:
+                # Cara frontal (G4)
+                lineas_opt.append(f"N{n_opt} QX={cur_x:.2f} QY=0.00 PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G4 {herr}")
+            else:
+                lineas_opt.append(f"N{n_opt} QX={cur_x:.2f} QY={cur_y:.2f} PRF={prof:.2f} QZ={cur_z:.2f} QQN=1 L=G2 {herr}")
             n_opt += 10
 
+    # Generar bloques optimizados verticales
     for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
         x_base, y_base = float(r["X"]), float(r["Y"])
         prof = float(r["Profundidad"]) if pd.notna(r.get("Profundidad")) else 15.0
@@ -84,9 +107,9 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_f
             n_opt += 10
 
     lineas_opt.append("%")
-    sec_opt = "\r\n".join(lineas_opt) + "\r\n"
+    sec_opt = "\n".join(lineas_opt) + "\n"
 
-    lineas_prof = [f"N10 G71 LX={lpx:g} LY={lpy:g} LZ={lpz:g} HC{hc} Z=PRK", "N11 LO:"]
+    lineas_prof = [f"N10 G71 LX={lpx:g} LY={lpy:g} LZ={lpz:g} HC{hc} Z=PRK                                    ", "N11 LO:"]
     n_prof, puntos_fresado = 20, df_fresado.dropna(subset=["X", "Y"]) if not df_fresado.empty else pd.DataFrame()
     if not puntos_fresado.empty:
         primer = puntos_fresado.iloc[0]
@@ -105,11 +128,8 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_f
         n_prof += 10
 
     lineas_prof.extend([f"N{n_prof} Y=PRK Z=PRK", "%"])
-    sec_prof = "\r\n".join(lineas_prof) + "\r\n"
+    sec_prof = "\n".join(lineas_prof) + "\n"
     return sec_tabla, sec_props, sec_opt, sec_prof
-
-def ensamblar_programa_plano(nombre, meta):
-    return f"%{nombre}\r\n{meta['sec_props']}{meta['sec_tabla']}{meta['sec_opt']}{meta['sec_prof']}"
 
 def generar_disquete_con_molde(bytes_molde, lista_programas):
     img = bytearray(bytes_molde)
@@ -129,7 +149,7 @@ def generar_disquete_con_molde(bytes_molde, lista_programas):
     sec_o = meta["sec_opt"].encode('ascii', errors='ignore')
     sec_pr = meta["sec_prof"].encode('ascii', errors='ignore')
     
-    b_tabla = b"11\r\n" + sec_t
+    b_tabla = b"11" + sec_t
     b_props = sec_p
     b_opt = sec_o
     b_prof = sec_pr
@@ -146,8 +166,7 @@ def generar_disquete_con_molde(bytes_molde, lista_programas):
     off_pie = off_prof + len(b_prof)
     off_fin = off_pie + len(b_pie)
 
-    # Ajuste de flags de cabecera para forzar compatibilidad con el editor principal de CNi Floppy
-    cab[25] = 0x00  # Evita marca de subprograma externo
+    cab[25] = 0x31
     cab[30] = 0x30
     cab[31] = 0x30  
     cab[32] = 0x00
@@ -197,7 +216,7 @@ def generar_disquete_con_molde(bytes_molde, lista_programas):
 
 if "cola_disquete" not in st.session_state: st.session_state.cola_disquete = {}
 
-tab1, tab2, tab3 = st.tabs(["1️⃣ Diseñador de Pieza (4 Pestañas CNi)", "2️⃣ Extractor de Respaldos", "3️⃣ Generar Disquete (.IMG) & Archivos .CNC"])
+tab1, tab2, tab3 = st.tabs(["1️⃣ Diseñador de Pieza (4 Pestañas CNi)", "2️⃣ Extractor de Respaldos", "3️⃣ Generar Disquete (.IMG) con Molde Real"])
 
 with tab1:
     col_izq, col_der = st.columns([1.25, 1])
@@ -225,15 +244,23 @@ with tab1:
         })
 
         st.subheader("Drilling tables — Horizontal drills")
-        df_horiz = st.data_editor(pd.DataFrame(columns=["Cara", "S", "X/Y", "Z", "Profundidad", "Diametro", "Tipo", "Rep", "Off_X", "Off_Y", "Off_Z", "Herramienta"]), num_rows="dynamic", use_container_width=True, column_config={
-            "Cara": st.column_config.SelectboxColumn("C (Cara)", options=["Izquierda (L=G1)", "Derecha (L=G3)", "Frontal (L=G4)"]),
-            "S": st.column_config.NumberColumn("S", min_value=1, max_value=4, step=1, default=1),
-            "X/Y": st.column_config.NumberColumn("X / Y", format="%.2f"), "Z": st.column_config.NumberColumn("Z", format="%.2f", default=0.0),
-            "Profundidad": st.column_config.NumberColumn("Dp.", format="%.2f", default=10.0), "Diametro": st.column_config.NumberColumn("Ø", format="%.1f", default=8.0),
-            "Tipo": st.column_config.NumberColumn("T", min_value=1, max_value=3, step=1, default=2), "Rep": st.column_config.NumberColumn("Rep", min_value=1, max_value=50, step=1, default=1),
-            "Off_X": st.column_config.NumberColumn("Off. X", format="%.2f", default=0.0), "Off_Y": st.column_config.NumberColumn("Off. Y", format="%.2f", default=0.0),
-            "Off_Z": st.column_config.NumberColumn("Off. Z", format="%.2f", default=0.0),
-            "Herramienta": st.column_config.SelectboxColumn("Broca", options=["TH2", "TH4", "TH5", "TH6", "TH7", "TH8"], default="TH8")
+        df_horiz_default = pd.DataFrame([
+            {"C": 1, "S": 1, "X": 48.0, "Y": None, "Z": 7.5, "Profundidad": 24.0, "Diametro": 8.0, "Tipo": 2, "Rep": 3, "Off_X": 0.0, "Off_Y": 70.0, "Off_Z": 0.0, "Herramienta": "TH8"}
+        ])
+        df_horiz = st.data_editor(df_horiz_default, num_rows="dynamic", use_container_width=True, column_config={
+            "C": st.column_config.NumberColumn("C", min_value=1, max_value=4, step=1),
+            "S": st.column_config.NumberColumn("S", min_value=1, max_value=4, step=1),
+            "X": st.column_config.NumberColumn("X", format="%.2f"),
+            "Y": st.column_config.NumberColumn("Y", format="%.2f"),
+            "Z": st.column_config.NumberColumn("Z", format="%.2f"),
+            "Profundidad": st.column_config.NumberColumn("Dp.", format="%.2f"),
+            "Diametro": st.column_config.NumberColumn("Ø", format="%.1f"),
+            "Tipo": st.column_config.NumberColumn("T", min_value=1, max_value=3, step=1),
+            "Rep": st.column_config.NumberColumn("Rep", min_value=1, max_value=50, step=1),
+            "Off_X": st.column_config.NumberColumn("Off. X", format="%.2f"),
+            "Off_Y": st.column_config.NumberColumn("Off. Y", format="%.2f"),
+            "Off_Z": st.column_config.NumberColumn("Off. Z", format="%.2f"),
+            "Herramienta": st.column_config.SelectboxColumn("Broca", options=["TH2", "TH4", "TH5", "TH6", "TH7", "TH8"])
         })
 
         with st.expander("Profiling / Fresado (Opcional)"):
@@ -246,11 +273,14 @@ with tab1:
         st.subheader("Vista Previa 2D")
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.add_patch(patches.Rectangle((0, 0), lpx, lpy, linewidth=2, edgecolor='#1f77b4', facecolor='#f4e4c1'))
+        
+        # Graficar verticales
         for _, r in df_vert.dropna(subset=["X", "Y"]).iterrows():
             rep = max(1, int(r.get("Rep", 1))) if pd.notna(r.get("Rep")) else 1
             ox, oy = float(r["Off_X"]) if pd.notna(r.get("Off_X")) else 0.0, float(r["Off_Y"]) if pd.notna(r.get("Off_Y")) else 0.0
             color = 'crimson' if r.get("Ciclo") == "G99" else 'royalblue'
             for step in range(rep): ax.plot(float(r["X"]) + step * ox, float(r["Y"]) + step * oy, 'o', color=color, markersize=6)
+            
         ax.set_xlim(-30, lpx + 30)
         ax.set_ylim(-30, lpy + 30)
         ax.set_aspect('equal')
@@ -266,23 +296,10 @@ with tab1:
         with p_opt: sec_opt_edit = st.text_area("Optimized drilling:", value=sec_opt, height=160)
         with p_tab: sec_tabla_edit = st.text_area("Drilling tables:", value=sec_tabla, height=160)
 
-        meta_actual = {"sec_tabla": sec_tabla_edit, "sec_props": sec_props, "sec_opt": sec_opt_edit, "sec_prof": sec_prof_edit}
-        contenido_cnc = ensamblar_programa_plano(nombre_prog, meta_actual)
-
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            if st.button("➕ Agregar a la Cola del Disquete", type="primary", use_container_width=True):
-                nombre_limpio_key = re.sub(r'[^A-Z0-9_-]', '', str(nombre_prog).replace('"', '').replace("'", "").upper())[:11] or "PIEZA01"
-                st.session_state.cola_disquete[nombre_limpio_key] = meta_actual
-                st.success(f"'{nombre_limpio_key}' agregado.")
-        with col_btn2:
-            st.download_button(
-                label="📥 Descargar archivo .CNC",
-                data=contenido_cnc,
-                file_name=f"{nombre_prog}.CNC",
-                mime="text/plain",
-                use_container_width=True
-            )
+        if st.button("➕ Agregar a la Cola del Disquete", type="primary", use_container_width=True):
+            nombre_limpio_key = re.sub(r'[^A-Z0-9_-]', '', str(nombre_prog).replace('"', '').replace("'", "").upper())[:11]
+            st.session_state.cola_disquete[nombre_limpio_key] = {"sec_tabla": sec_tabla_edit, "sec_props": sec_props, "sec_opt": sec_opt_edit, "sec_prof": sec_prof_edit}
+            st.success(f"Programa '{nombre_limpio_key}' agregado con sus 4 secciones CNi.")
 
 with tab2:
     st.subheader("Extractor de Programas desde Imagen CNi")
@@ -296,12 +313,12 @@ with tab2:
                 st.code(re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xff]', '', bloque).strip())
 
 with tab3:
-    st.subheader("Generación de Disquete (.IMG) & Descarga de Programas .CNC")
+    st.subheader("Disquete CNi con Molde Nativo Verificado (00036RV1.ima.IMG)")
     bytes_molde = None
     for ruta in RUTAS_PLANTILLA_DEFAULT:
         if os.path.exists(ruta):
             with open(ruta, "rb") as f: bytes_molde = f.read()
-            st.success(f"✅ Molde nativo cargado desde: `{ruta}`")
+            st.success(f"✅ Molde nativo cargado automáticamente desde: `{ruta}`")
             break
 
     molde_subido = st.file_uploader("O selecciona manualmente el archivo base (.IMG) de tu disquete CNi:", type=["img", "ima"], key="molde_uploader")
@@ -309,28 +326,15 @@ with tab3:
         bytes_molde = molde_subido.read()
         st.success(f"✅ Molde cargado manualmente: `{molde_subido.name}`")
 
-    st.markdown("---")
-    st.subheader("📁 Programas en Cola / Memoria Actual")
-    if st.session_state.cola_disquete:
-        for nombre_p, meta_p in list(st.session_state.cola_disquete.items()):
-            col_n, col_d1, col_d2 = st.columns([2, 1, 1])
-            col_n.write(f"🔹 **{nombre_p}**")
-            cnc_text = ensamblar_programa_plano(nombre_p, meta_p)
-            col_d1.download_button(
-                label=f"Descargar .CNC",
-                data=cnc_text,
-                file_name=f"{nombre_p}.CNC",
-                mime="text/plain",
-                key=f"dl_{nombre_p}"
-            )
-            if col_d2.button(f"🗑️ Quitar", key=f"del_{nombre_p}"):
-                del st.session_state.cola_disquete[nombre_p]
-                st.rerun()
-    else:
-        st.info("No hay programas en la cola actualmente. Puedes agregar piezas desde la pestaña 1.")
+    col_info, col_btn = st.columns([2, 1])
+    with col_info:
+        st.write("**Programas nuevos en cola para este disquete:**", list(st.session_state.cola_disquete.keys()) if st.session_state.cola_disquete else "Ninguno")
+    with col_btn:
+        if st.button("🗑️ Vaciar Cola", use_container_width=True):
+            st.session_state.cola_disquete = {}
+            st.rerun()
 
-    st.markdown("---")
-    nombre_salida = st.text_input("Nombre de la imagen de disquete para el emulador USB (Gotek):", value="DSKA0000.IMG")
+    nombre_salida = st.text_input("Nombre del archivo para el emulador USB (Gotek):", value="DSKA0000.IMG")
 
     if bytes_molde is not None:
         imagen_final = generar_disquete_con_molde(bytes_molde, list(st.session_state.cola_disquete.items()))
