@@ -7,7 +7,7 @@ import re
 import os
 
 st.set_page_config(page_title="Biesse Rover 322", page_icon="🪚", layout="wide")
-st.title("🪚 Generador de Disquetes (.IMG) - Biesse CNi RT480")
+st.title("Biesse CNi RT480")
 
 FLOPPY_SIZE = 1474560
 DIR_OFFSET = 0x9A00
