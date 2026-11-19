@@ -115,12 +115,12 @@ def generar_disquete_con_molde(bytes_molde, lista_programas):
     nombre_raw, meta = lista_programas[0]
     nombre_limpio = re.sub(r'[^A-Z0-9_-]', '', str(nombre_raw).replace('"', '').replace("'", "").upper())[:11] or "PIEZA01"
 
-    sec_t = meta["sec_tabla"].encode('ascii', errors='ignore')
-    sec_p = meta["sec_props"].encode('ascii', errors='ignore')
-    sec_o = meta["sec_opt"].encode('ascii', errors='ignore')
-    sec_pr = meta["sec_prof"].encode('ascii', errors='ignore')
+    sec_t = meta["sec_tabla"].replace('\n', '\r\n').encode('ascii', errors='ignore')
+    sec_p = meta["sec_props"].replace('\n', '\r\n').encode('ascii', errors='ignore')
+    sec_o = meta["sec_opt"].replace('\n', '\r\n').encode('ascii', errors='ignore')
+    sec_pr = meta["sec_prof"].replace('\n', '\r\n').encode('ascii', errors='ignore')
     
-    b_tabla = b"11" + sec_t
+    b_tabla = b"11\r\n" + sec_t
     b_props = sec_p
     b_opt = sec_o
     b_prof = sec_pr
