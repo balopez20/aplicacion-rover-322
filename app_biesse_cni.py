@@ -7,7 +7,7 @@ import re
 import os
 
 st.set_page_config(page_title="Generador CNi RT480 - Biesse Rover 322", page_icon="🪚", layout="wide")
-st.title("🪚 Generador de Disquetes (.IMG) - Biesse CNi RT480")
+st.title("🪚 Generador CNi RT480 & Disquetes (.IMG) - Biesse Rover 322")
 
 FLOPPY_SIZE = 1474560
 DIR_OFFSET = 0x9A00
@@ -107,6 +107,10 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_f
     sec_prof = "\r\n".join(lineas_prof) + "\r\n"
     return sec_tabla, sec_props, sec_opt, sec_prof
 
+def ensamblar_programa_plano(nombre, meta):
+    """Combina las secciones en un formato de archivo plano .cnc compatible."""
+    return f"%{nombre}\r\n{meta['sec_props']}{meta['sec_tabla']}{meta['sec_opt']}{meta['sec_prof']}"
+
 def generar_disquete_con_molde(bytes_molde, lista_programas):
     img = bytearray(bytes_molde)
     if len(img) < FLOPPY_SIZE: 
@@ -192,7 +196,7 @@ def generar_disquete_con_molde(bytes_molde, lista_programas):
 
 if "cola_disquete" not in st.session_state: st.session_state.cola_disquete = {}
 
-tab1, tab2, tab3 = st.tabs(["1️⃣ Diseñador de Pieza (4 Pestañas CNi)", "2️⃣ Extractor de Respaldos", "3️⃣ Generar Disquete (.IMG) con Molde Real"])
+tab1, tab2, tab3 = st.tabs(["1️⃣ Diseñador de Pieza (4 Pestañas CNi)", "2️⃣ Extractor de Respaldos", "3️⃣ Generar Disquete (.IMG) & Archivos .CNC"])
 
 with tab1:
     col_izq, col_der = st.columns([1.25, 1])
@@ -261,10 +265,23 @@ with tab1:
         with p_opt: sec_opt_edit = st.text_area("Optimized drilling:", value=sec_opt, height=160)
         with p_tab: sec_tabla_edit = st.text_area("Drilling tables:", value=sec_tabla, height=160)
 
-        if st.button("➕ Agregar a la Cola del Disquete", type="primary", use_container_width=True):
-            nombre_limpio_key = re.sub(r'[^A-Z0-9_-]', '', str(nombre_prog).replace('"', '').replace("'", "").upper())[:11]
-            st.session_state.cola_disquete[nombre_limpio_key] = {"sec_tabla": sec_tabla_edit, "sec_props": sec_props, "sec_opt": sec_opt_edit, "sec_prof": sec_prof_edit}
-            st.success(f"Programa '{nombre_limpio_key}' agregado con sus 4 secciones CNi.")
+        meta_actual = {"sec_tabla": sec_tabla_edit, "sec_props": sec_props, "sec_opt": sec_opt_edit, "sec_prof": sec_prof_edit}
+        contenido_cnc = ensamblar_programa_plano(nombre_prog, meta_actual)
+
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("➕ Agregar a la Cola del Disquete", type="primary", use_container_width=True):
+                nombre_limpio_key = re.sub(r'[^A-Z0-9_-]', '', str(nombre_prog).replace('"', '').replace("'", "").upper())[:11] or "PIEZA01"
+                st.session_state.cola_disquete[nombre_limpio_key] = meta_actual
+                st.success(f"'{nombre_limpio_key}' agregado.")
+        with col_btn2:
+            st.download_button(
+                label="📥 Descargar archivo .CNC",
+                data=contenido_cnc,
+                file_name=f"{nombre_prog}.CNC",
+                mime="text/plain",
+                use_container_width=True
+            )
 
 with tab2:
     st.subheader("Extractor de Programas desde Imagen CNi")
@@ -278,12 +295,12 @@ with tab2:
                 st.code(re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xff]', '', bloque).strip())
 
 with tab3:
-    st.subheader("Disquete CNi con Molde Nativo Verificado (00036RV1.ima.IMG)")
+    st.subheader("Generación de Disquete (.IMG) & Descarga de Programas .CNC")
     bytes_molde = None
     for ruta in RUTAS_PLANTILLA_DEFAULT:
         if os.path.exists(ruta):
             with open(ruta, "rb") as f: bytes_molde = f.read()
-            st.success(f"✅ Molde nativo cargado automáticamente desde: `{ruta}`")
+            st.success(f"✅ Molde nativo cargado desde: `{ruta}`")
             break
 
     molde_subido = st.file_uploader("O selecciona manualmente el archivo base (.IMG) de tu disquete CNi:", type=["img", "ima"], key="molde_uploader")
@@ -291,15 +308,28 @@ with tab3:
         bytes_molde = molde_subido.read()
         st.success(f"✅ Molde cargado manualmente: `{molde_subido.name}`")
 
-    col_info, col_btn = st.columns([2, 1])
-    with col_info:
-        st.write("**Programas nuevos en cola para este disquete:**", list(st.session_state.cola_disquete.keys()) if st.session_state.cola_disquete else "Ninguno")
-    with col_btn:
-        if st.button("🗑️ Vaciar Cola", use_container_width=True):
-            st.session_state.cola_disquete = {}
-            st.rerun()
+    st.markdown("---")
+    st.subheader("📁 Programas en Cola / Memoria Actual")
+    if st.session_state.cola_disquete:
+        for nombre_p, meta_p in list(st.session_state.cola_disquete.items()):
+            col_n, col_d1, col_d2 = st.columns([2, 1, 1])
+            col_n.write(f"🔹 **{nombre_p}**")
+            cnc_text = ensamblar_programa_plano(nombre_p, meta_p)
+            col_d1.download_button(
+                label=f"Descargar .CNC",
+                data=cnc_text,
+                file_name=f"{nombre_p}.CNC",
+                mime="text/plain",
+                key=f"dl_{nombre_p}"
+            )
+            if col_d2.button(f"🗑️ Quitar", key=f"del_{nombre_p}"):
+                del st.session_state.cola_disquete[nombre_p]
+                st.rerun()
+    else:
+        st.info("No hay programas en la cola actualmente. Puedes agregar piezas desde la pestaña 1.")
 
-    nombre_salida = st.text_input("Nombre del archivo para el emulador USB (Gotek):", value="DSKA0000.IMG")
+    st.markdown("---")
+    nombre_salida = st.text_input("Nombre de la imagen de disquete para el emulador USB (Gotek):", value="DSKA0000.IMG")
 
     if bytes_molde is not None:
         imagen_final = generar_disquete_con_molde(bytes_molde, list(st.session_state.cola_disquete.items()))
