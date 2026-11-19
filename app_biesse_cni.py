@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -108,7 +109,6 @@ def generar_secciones_cni(lpx, lpy, lpz, hc, comentario, df_vert, df_horiz, df_f
     return sec_tabla, sec_props, sec_opt, sec_prof
 
 def ensamblar_programa_plano(nombre, meta):
-    """Combina las secciones en un formato de archivo plano .cnc compatible."""
     return f"%{nombre}\r\n{meta['sec_props']}{meta['sec_tabla']}{meta['sec_opt']}{meta['sec_prof']}"
 
 def generar_disquete_con_molde(bytes_molde, lista_programas):
@@ -146,7 +146,8 @@ def generar_disquete_con_molde(bytes_molde, lista_programas):
     off_pie = off_prof + len(b_prof)
     off_fin = off_pie + len(b_pie)
 
-    cab[25] = 0x31
+    # Ajuste de flags de cabecera para forzar compatibilidad con el editor principal de CNi Floppy
+    cab[25] = 0x00  # Evita marca de subprograma externo
     cab[30] = 0x30
     cab[31] = 0x30  
     cab[32] = 0x00
